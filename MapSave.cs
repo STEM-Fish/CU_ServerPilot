@@ -32,7 +32,7 @@ public static class MapSave
 {
     public class SaveData
     {
-        public int version = 3;
+        public int version = 4;
         public string saveName;
         public string saveDate;
         public int width;
@@ -46,6 +46,13 @@ public static class MapSave
         public ushort[] blocks;                  // 扁平化 worldBlocks
         public List<BuildingSave> buildings;
         public List<ItemSave> items;
+        public List<DecorSave> decorations;      // v4: 插件生成的装饰物（无碰撞/无重力/无交互）
+    }
+
+    public class DecorSave
+    {
+        public string id;
+        public float x, y, rot;
     }
 
     public class BuildingSave
@@ -114,7 +121,8 @@ public static class MapSave
             fluidsBase64 = CaptureFluids(),
             blocks = flat,
             buildings = CaptureBuildings(),
-            items = CaptureItems()
+            items = CaptureItems(),
+            decorations = CaptureDecorations()
         };
 
         Directory.CreateDirectory(SaveFolder);
@@ -181,6 +189,8 @@ public static class MapSave
             {
                 // 只存地面物品：容器内（背包/箱子）与手持的不存 → 读档后原地保留
                 if (it == null || it.transform == null || it.container != null) continue;
+                // 装饰物品（DecorTag）走装饰通道，不走物品通道（避免加载时重复/丢失装饰特性）
+                if (it.GetComponent<DecorTag>() != null) continue;
                 bool held = false;
                 foreach (var b in bodies)
                 {
@@ -230,6 +240,29 @@ public static class MapSave
         catch (Exception e)
         {
             Plugin.Log.LogWarning($"[CU_ServerPilot] 保存物品失败: {e.Message}");
+        }
+        return list;
+    }
+
+    // 保存插件生成的装饰物（DecorTag 标记：无碰撞/无重力/无交互）
+    private static List<DecorSave> CaptureDecorations()
+    {
+        var list = new List<DecorSave>();
+        try
+        {
+            foreach (var tag in UnityEngine.Object.FindObjectsOfType<DecorTag>())
+            {
+                if (tag == null || tag.transform == null) continue;
+                var p = tag.transform.position;
+                if (float.IsNaN(p.x) || float.IsInfinity(p.x) || float.IsNaN(p.y) || float.IsInfinity(p.y)) continue;
+                string id = tag.name.Replace("(Clone)", "").Trim();
+                if (id.Length == 0) continue;
+                list.Add(new DecorSave { id = id, x = p.x, y = p.y, rot = tag.transform.eulerAngles.z });
+            }
+        }
+        catch (Exception e)
+        {
+            Plugin.Log.LogWarning($"[CU_ServerPilot] 保存装饰失败: {e.Message}");
         }
         return list;
     }
@@ -284,11 +317,14 @@ public static class MapSave
         // 5) 重建物品（含状态）——比 SuperGodFistTool 更完整（它只存不读）
         RebuildItems(data.items);
 
-        // 6) 重建建筑
+        // 6) 重建装饰物（v4：无碰撞/无重力/无交互原样恢复）
+        RebuildDecorations(data.decorations);
+
+        // 7) 重建建筑
         RebuildBuildings(data.buildings);
 
-        Plugin.Log.LogInfo($"[CU_ServerPilot] 地图已加载: {name}（{w}x{h}，建筑 {data.buildings?.Count ?? 0}，物品 {data.items?.Count ?? 0}）");
-        ConsoleManager.SendFeedback($"地图已加载: {name}（{w}x{h}，建筑 {data.buildings?.Count ?? 0}，物品 {data.items?.Count ?? 0}）");
+        Plugin.Log.LogInfo($"[CU_ServerPilot] 地图已加载: {name}（{w}x{h}，建筑 {data.buildings?.Count ?? 0}，物品 {data.items?.Count ?? 0}，装饰 {data.decorations?.Count ?? 0}）");
+        ConsoleManager.SendFeedback($"地图已加载: {name}（{w}x{h}，建筑 {data.buildings?.Count ?? 0}，物品 {data.items?.Count ?? 0}，装饰 {data.decorations?.Count ?? 0}）");
         return true;
     }
 
@@ -309,7 +345,7 @@ public static class MapSave
         }
     }
 
-    // 加载前清空现有建筑 + 物品（仿 SuperGodFistTool）
+    // 加载前清空现有建筑 + 物品 + 装饰（仿 SuperGodFistTool）
     private static void ClearWorldEntities()
     {
         try
@@ -319,6 +355,8 @@ public static class MapSave
             foreach (var it in Item.allItems.ToArray())
             {
                 if (it == null || it.container != null) continue;
+                // 装饰物品走 DecorTag 清理，不走这里（防重复销毁）
+                if (it.GetComponent<DecorTag>() != null) continue;
                 bool held = false;
                 foreach (var b in bodies)
                 {
@@ -326,6 +364,13 @@ public static class MapSave
                 }
                 if (held) continue;
                 UnityEngine.Object.Destroy(it.gameObject);
+            }
+
+            // 清掉全部装饰物（含纯实体——无 Item 组件的装饰）
+            foreach (var tag in UnityEngine.Object.FindObjectsOfType<DecorTag>())
+            {
+                if (tag != null && tag.gameObject != null)
+                    UnityEngine.Object.Destroy(tag.gameObject);
             }
 
             foreach (var be in UnityEngine.Object.FindObjectsOfType<BuildingEntity>())
@@ -339,6 +384,35 @@ public static class MapSave
         {
             Plugin.Log.LogWarning($"[CU_ServerPilot] 清空实体失败: {e.Message}");
         }
+    }
+
+    // 重建装饰物：实例化 + 装饰化处理（无碰撞/无重力/无交互 + DecorTag）
+    private static void RebuildDecorations(List<DecorSave> decorations)
+    {
+        if (decorations == null || decorations.Count == 0) return;
+        int ok = 0;
+        foreach (var d in decorations)
+        {
+            try
+            {
+                var prefab = Resources.Load<GameObject>(d.id);
+                if (prefab == null)
+                {
+                    Plugin.Log.LogWarning($"[CU_ServerPilot] 装饰预制体不存在: {d.id}");
+                    continue;
+                }
+                var go = UnityEngine.Object.Instantiate(prefab,
+                    new Vector3(d.x, d.y, 0f), Quaternion.Euler(0f, 0f, d.rot));
+                if (go == null) continue;
+                DecorSpawner.ProcessAsDecor(go);
+                ok++;
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogWarning($"[CU_ServerPilot] 重建装饰失败 {d.id}: {e.Message}");
+            }
+        }
+        Plugin.Log.LogInfo($"[CU_ServerPilot] 装饰重建: {ok}/{decorations.Count}");
     }
 
     // 重建物品（Utils.Create + 恢复枪械/电池/液体/耐久）

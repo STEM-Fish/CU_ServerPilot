@@ -90,13 +90,22 @@ public static class DecorSpawner
             }
             var go = UnityEngine.Object.Instantiate(prefab, pos, Quaternion.identity);
             if (go == null) return;
-            DisableInteractions(go);
+            ProcessAsDecor(go);
             ConsoleManager.SendFeedback($"已生成装饰 [{e.Display}]（无碰撞无重力无交互）");
         }
         catch (Exception ex)
         {
             ConsoleManager.SendFeedback($"生成失败 {e.Name}: {ex.Message}");
         }
+    }
+
+    // 装饰化处理：剥离交互 + 挂 DecorTag（生成和存档加载共用）
+    public static void ProcessAsDecor(GameObject go)
+    {
+        if (go == null) return;
+        DisableInteractions(go);
+        if (go.GetComponent<DecorTag>() == null)
+            go.AddComponent<DecorTag>();
     }
 
     // 擦除鼠标位置的装饰物（按 DecorTag 标记匹配，距离 < 0.6 格）
