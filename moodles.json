@@ -1,0 +1,4 @@
+[
+  { "id": "serverbuff", "title": "服务器增益", "desc": "由服务器管理员加持，本局愉快游戏", "moodleType": 1, "iconKey": "impendingdoom", "important": true, "applyOnJoin": true },
+  { "id": "vip", "title": "VIP", "desc": "尊贵的 VIP 玩家", "moodleType": 0, "iconKey": "happy", "important": false, "applyOnJoin": false }
+]
