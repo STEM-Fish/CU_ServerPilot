@@ -71,6 +71,9 @@ public static class MapSave
         public float? gunRoundsInMag, gunMagCapacity, batteryMaxCharge;
         public bool? gunHasMag, gunSafe, gunRacked;
         public List<LiquidSave> liquidStacks;
+        public bool? isSuper;              // v4: 超级物品（耐久锁定/无重力）
+        public bool? superLockDurability;
+        public bool? superNoGravity;
     }
 
     public class LiquidSave
@@ -233,6 +236,15 @@ public static class MapSave
                 // 电池
                 var bat = it.GetComponent<BatteryItem>();
                 if (bat != null) s.batteryMaxCharge = bat.maxCharge;
+
+                // 超级物品（耐久锁定/无重力，v4）
+                var st = it.GetComponent<SuperItemTag>();
+                if (st != null)
+                {
+                    s.isSuper = true;
+                    s.superLockDurability = st.lockDurability;
+                    s.superNoGravity = st.noGravity;
+                }
 
                 list.Add(s);
             }
@@ -431,6 +443,10 @@ public static class MapSave
                 }
                 var item = go.GetComponent<Item>();
                 if (item == null) continue;
+
+                // 超级物品恢复（v4：耐久锁定/无重力原样恢复，不依赖 cfg 开关）
+                if (s.isSuper.HasValue && s.isSuper.Value)
+                    SuperItem.Restore(item, s.superLockDurability ?? true, s.superNoGravity ?? true);
 
                 if (s.condition.HasValue) item.condition = s.condition.Value;
                 if (s.favourited.HasValue) item.favourited = s.favourited.Value;

@@ -123,7 +123,9 @@ public static class ModUI
             GUI.DrawTexture(new Rect(-8, -28, windowRect.width + 16, windowRect.height + 34), winBgTex);
 
         // 自绘标题（GUI.Window 传空 title，避免自定义样式下标题被遮挡）
-        GUILayout.Label("CU ServerPilot", titleStyle);
+        GUILayout.Label($"CU ServerPilot v{VersionCheck.CurrentVersion}", titleStyle);
+        if (VersionCheck.HasNew)
+            GUILayout.Label($"⚠ 发现新版本 v{VersionCheck.LatestVersion}（GitHub 可下载）", accentLabelStyle);
         GUI.DragWindow(new Rect(0, 0, 10000, 22));
 
         // 标签页（手动 hover 检测 + 当前页高亮）

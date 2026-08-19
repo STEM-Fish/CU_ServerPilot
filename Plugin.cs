@@ -39,9 +39,10 @@ public class Plugin : BaseUnityPlugin
         SuperItem.Init(this);
         BiomeBalance.Init(this);
         MoodleClient.Init(this);
+        DecorClient.Init(this);
         CombatAssist.Init(this);
 
-        Log.LogInfo("[CU_ServerPilot] 加载完成。聊天输入 /sphelp 查看命令");
+        Log.LogInfo("[CU_ServerPilot] 加载完成（v" + VersionCheck.CurrentVersion + "）。聊天输入 /sphelp 查看命令");
     }
 
     private void Update()
@@ -49,6 +50,9 @@ public class Plugin : BaseUnityPlugin
         CombatAssist.Update();
         ModUI.Update();
         BiomeBalance.Update();
+        DecorSpawner.Update();
+        VersionCheck.Update();
+        VersionCheck.Poll();
     }
 
     private void OnDestroy()
